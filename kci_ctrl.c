@@ -10,6 +10,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+// Headers:
+
+void copyLog();
 
 // To do list:
 // 1. Is each flow size 6 ?
@@ -20,6 +23,70 @@ struct current_struct{
 
 struct current_struct current; 
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
+
+
+void copyLog(){
+
+	int inner_calls_fd = 0;
+	int log_file_fd = 0;
+	int bytes_read_from_log = 0;
+	int total_bytes_written_to_calls = 0;
+	int bytes_written_to_calls = 0;
+	char logBuffer[MAX] = {0}; // insert bytes read from log file here
+
+	// create "calls file"
+	inner_calls_fd = open(CALLS, O_WRONLY | O_CREAT | O_TRUNC,0777 ); // opens/creates an output file 
+	if (inner_calls_fd < 0){ // check for error 
+			printf("Error creating 'calls' file in current directory: %s\n", strerror(errno));
+			exit(errno); 
+	}
+
+	// open log file for reading 
+   	log_file_fd = open(LOF_FILE_PATH, O_RDONLY); // open IN file
+	
+   	if( log_file_fd < 0 ){
+        	printf("Error opening log file : %s\n", strerror(errno) );
+        	exit(errno); 
+	}
+
+	 // copy the data from log file to the calls in current directory
+
+	while (1){ // read until we have nothing to read from log file
+
+			bytes_read_from_log = read(log_file_fd, logBuffer, MAX); // try reading from IN
+
+			if (bytes_read_from_log < 0){ // error reading from client
+				printf("Error reading from log file: %s\n", strerror(errno));
+				exit(errno); 
+			}
+
+			else if (bytes_read_from_log == 0){ // finish reading - THIS WILL END THE WHILE LOOP
+				break;
+			}
+			
+			total_bytes_written_to_calls = 0; // sum the bytes we write - make sure we wrote everything
+			while (total_bytes_written_to_calls < bytes_read_from_log) {
+				
+				bytes_written_to_calls = write(inner_calls_fd, logBuffer + total_bytes_written_to_calls, bytes_read_from_log - total_bytes_written_to_calls);
+				if (bytes_written_to_calls < 0) {
+					printf("error write() to 'calls' file : %s\n", strerror(errno));
+					exit(errno);
+				}
+
+				// increment our counter
+				else{
+					total_bytes_written_to_calls = total_bytes_written_to_calls + bytes_written_to_calls;
+				}
+
+			} // finished writing to server the current buffer
+		}
+
+		// close file when done 
+		close(log_file_fd);
+		close(inner_calls_fd); 
+
+
+}
 
 int main(int argc, char *argv[]){
 
@@ -127,8 +194,15 @@ int main(int argc, char *argv[]){
 		} // END OF CIPHER UN-ENCRYPT COMMAND
 
 		else if(strcmp(argv[i], RM_STR) == 0){
-			// copy log file
+			// copy log file to inner 'calls' file
+			copyLog();
+
 			// remove kernel module - delete_module
+			ret_val = syscall(__NR_delete_module, ko_path,  O_NONBLOCK); // check flags
+			if (ret_val < 0){
+				printf("Error inc delet_module syscall : %s\n", strerror(errno));
+				exit(errno);
+			}
 			// remove device file created by init
 
 		}
