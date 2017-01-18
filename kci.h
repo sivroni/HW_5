@@ -28,7 +28,7 @@
 #define RM_STR "-rm"
 ////////////////////////////
 
-#define BUF_LEN 80 // do we need bigger like 1024?
+#define BUF_LEN 80 // for read, write function. do we need bigger like 1024?
 #define SUCCESS 0
 
 

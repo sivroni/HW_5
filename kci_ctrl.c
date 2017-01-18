@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <asm/current.h> // ??
 
 // Headers:
 
@@ -16,12 +17,10 @@ void copyLog();
 
 // To do list:
 // 1. Is each flow size 6 ?
+// 2. is the arguments for each command come from the command-line or from us?
+// 3. Do I need to worry when ruuning the program (by ruining the VM)?
+// 4. Do we create the local calls file or assume it exists?
 
-struct current_struct{
-	pid_t pid; // current process id
-};
-
-struct current_struct current; 
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
 
 
@@ -78,10 +77,11 @@ void copyLog(){
 					total_bytes_written_to_calls = total_bytes_written_to_calls + bytes_written_to_calls;
 				}
 
-			} // finished writing to server the current buffer
-		}
+			} // finished writing to inner calls file the current buffer
+		} 
+		// noting else to read from log file - finished the loop
 
-		// close file when done 
+		// close files when done 
 		close(log_file_fd);
 		close(inner_calls_fd); 
 
@@ -100,8 +100,8 @@ int main(int argc, char *argv[]){
 	int FD; // argument for set_fd
 	char * ptr; // for strtoul function
 
-	if (argc < 3){
-		printf("Not enough arguments entered\n");
+	if (argc < 3){ // maybe change to 2 if KO is not part of the command-line
+		printf("Not enough arguments were entered...\n");
 		exit(-1);
 	}
 
@@ -119,11 +119,19 @@ int main(int argc, char *argv[]){
 
 			dev =  makedev(MAJOR_NUM, 0); // produces a device ID , WHAT ABOUT ERRORS?
 
-			ret_val =  mknod(DEVICE_FILE_PATH, S_IFREG | 0777 , dev); // CHECK
+			ret_val =  mknod(DEVICE_FILE_PATH, S_IFREG | 0777 , dev); // CHECK flags
 			if (ret_val < 0){
 				printf("Error: can't mknod : %s\n", strerror(errno));
 				exit(errno);
 			}
+
+
+			file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
+			if (file_desc < 0) {
+			    printf ("Can't open device file: %s\n", strerror(errno));
+			    exit(errno);
+			}
+
 			i++; // we actually read 2 arguments - init and ko_path
 			cotinue; // go to next iteration
 
@@ -139,9 +147,9 @@ int main(int argc, char *argv[]){
 					exit(errno);
 			}
 
-			ret_val = ioctl(file_desc, 	IOCTL_SET_PID, PID);
+			ret_val = ioctl(file_desc, IOCTL_SET_PID, PID);
 			if (ret_val < 0){
-				printf("Error in IOCTL_SET_PID : %s\n", strerror(errno));
+				printf("Error in ioctl - IOCTL_SET_PID : %s\n", strerror(errno));
 				exit(errno);
 			}
 
@@ -158,7 +166,7 @@ int main(int argc, char *argv[]){
 					exit(errno);
 			}
 
-			ret_val = ioctl(file_desc, 	IOCTL_SET_FD, FD);
+			ret_val = ioctl(file_desc, IOCTL_SET_FD, FD);
 			if (ret_val < 0){
 				printf("Error in IOCTL_SET_PID : %s\n", strerror(errno));
 				exit(errno);

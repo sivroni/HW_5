@@ -15,12 +15,13 @@
 #include <linux/fs.h>       /* for register_chrdev */
 #include <asm/uaccess.h>    /* for get_user and put_user */
 #include <linux/string.h>   /* for memset. NOTE - not string.h!*/
+#include <asm/current.h> 	/* for current global variable */
 
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL"); // GNU Public License v2 or later
 
 // Global variables:
-static int processID;
-static int fd;
+static int global_processID;
+static int global_fd;
 static int cipher_flag;
 
 static struct dentry *file; // "/sys/kernel/debug/kcikmod/calls"
@@ -29,7 +30,7 @@ static struct dentry *subdir; // "/sys/kernel/debug/kcikmod"
 static char Message[BUF_LEN]; /* The message the device will give when asked */
 
 // To do list:
-// 1.
+// 1. How to get the file descriptor from read\write functions?
 
 
 static long device_ioctl( //struct inode*  inode,
@@ -39,12 +40,12 @@ static long device_ioctl( //struct inode*  inode,
 
   // set processID
   if(IOCTL_SET_PID == ioctl_num) {
-    	processID = ioctl_param;
+    	global_processID = ioctl_param;
   }
 
   // set file descriptor
   else if (IOCTL_SET_FD == ioctl_num){
-  		fd = ioctl_param;
+  		global_fd = ioctl_param;
   }
 
   // set cipher flag
@@ -73,8 +74,8 @@ static int __init simple_init(void) {
 	unsigned int ret_val = 0;  
 
 	// init global variables:
-	processID = -1;
-	fd = -1;
+	global_processID = -1;
+	global_fd = -1;
 	cipher_flag = 0;
 
     // Register a char device. Get newly assigned major num 
@@ -102,7 +103,7 @@ static int __init simple_init(void) {
 
 
 
-    return 0;
+    return SUCCESS;
 }
 
 
@@ -114,23 +115,25 @@ static ssize_t device_read(struct file *file, /* see include/linux/fs.h   */
 
    
    	int i;
+   	int fd_to_read_from = 0;
 
-	if ( (cipher_flag == 1) && (/*compare id and fd */) ){ // encrypt!
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (/*compare fd */) ){ // encrypt!
 
 		for (i = 0; i < length && i < BUF_LEN; i++){
 			get_user(Message[i], buffer + i); // read
 			Message[i] += 1; // dectyped
 			put_user(Message[i], buffer + i); // return to user
 		}
-		printk("device_read: FD: %d ,PID: %d, number of bytes read: %d\n",fd ,processID, i); // writes to the private log file?
+		printk("device_read: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, i); // writes to the private log file?
 
 	}
 
 	else{ // dont encrypt!
 
-		for (i = 0; i < length && i < BUF_LEN; i++){
-			get_user(Message[i], buffer + i);
-		}
+		fd_to_read_from = ;
+
+		i = read(/* file descriptor */, buffer,length);
+
 
 	}
 	
@@ -146,21 +149,19 @@ static ssize_t device_write(struct file *file,
 
 	int i;
 
-	if ( (cipher_flag == 1) && (/*compare id and fd */) ){ // encrypt!
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && ()){ // encrypt!
 
 		for (i = 0; i < length && i < BUF_LEN; i++){
 			get_user(Message[i], buffer + i);
 			Message[i] += 1;
 		}
-		printk("device_write: FD: %d ,PID: %d, number of bytes written: %d\n",fd ,processID, i); // writes to the private log file?
+		printk("device_write: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, i); // writes to the private log file?
 
 	}
 
 	else{ // dont encrypt!
 
-		for (i = 0; i < length && i < BUF_LEN; i++){
-			get_user(Message[i], buffer + i);
-		}
+		i = write(,buffer,length);
 
 	}
 	
@@ -170,6 +171,13 @@ static ssize_t device_write(struct file *file,
 	return i;
 }
 
+/* Cleanup - unregister the appropriate file from /proc */
+static void __exit simple_cleanup(void){
+    /*  Unregister the device should always succeed (didnt used to in older kernel versions) */
+
+    unregister_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME); // return to original system calls
+    debugfs_remove_recursive(subdir); // clears log
+}
 
 module_init(simple_init);
 module_exit(simple_cleanup);
