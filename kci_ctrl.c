@@ -10,15 +10,15 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <asm/current.h> // ??
+#include <linux/debugfs.h>
 
 // Headers:
 
 void copyLog();
 
 // To do list:
-// 1. Is each flow size 6 ?
 // 2. is the arguments for each command come from the command-line or from us?
-// 3. Do I need to worry when ruuning the program (by ruining the VM)?
+// 3. SNAPSHOT - Do I need to worry when ruuning the program (by ruining the VM)?
 // 4. Do we create the local calls file or assume it exists?
 
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
@@ -203,7 +203,7 @@ int main(int argc, char *argv[]){
 
 		else if(strcmp(argv[i], RM_STR) == 0){
 			// copy log file to inner 'calls' file
-			copyLog();
+			copyLog(); 
 
 			// remove kernel module - delete_module
 			ret_val = syscall(__NR_delete_module, ko_path,  O_NONBLOCK); // check flags
