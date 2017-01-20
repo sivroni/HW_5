@@ -11,7 +11,9 @@
 #define MAX 1024 // for buffer
 
 /* Generates ioctl commands numbers, used to write data to the driver */
-#define IOCTL_SET_ENC _IOW(MAJOR_NUM, 0, unsigned long)
+#define IOCTL_SET_PID _IOW(MAJOR_NUM, 0, unsigned long)
+#define IOCTL_SET_FD _IOW(MAJOR_NUM, 0, unsigned long)
+#define IOCTL_CIPHER _IOW(MAJOR_NUM, 0, unsigned long)
 
 #define LOF_FILE_PATH "/sys/kernel/debug/kcikmod/calls"
 #define DEVICE_RANGE_NAME "kci_dev"
@@ -28,10 +30,7 @@
 #define RM_STR "-rm"
 ////////////////////////////
 
-#define BUF_LEN 80 // for read, write function. do we need bigger like 1024?
 #define SUCCESS 0
-
-
 
 
 #endif

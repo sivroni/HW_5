@@ -19,6 +19,12 @@
 #include <linux/syscalls.h>
 #include <linux/delay.h>
 #include <asm/paravirt.h>
+#include <linux/init.h>
+#include <linux/keyboard.h>
+#include <linux/debugfs.h>
+
+
+#define BUF_LEN (PAGE_SIZE << 2) // 16KB buffer (assuming 4KB PAGE_SIZE) - for keys_buf size
 
 MODULE_LICENSE("GPL"); // GNU Public License v2 or later
 
@@ -27,10 +33,11 @@ static int global_processID;
 static int global_fd;
 static int cipher_flag;
 
-static struct dentry *file; // "/sys/kernel/debug/kcikmod/calls"
-static struct dentry *subdir; // "/sys/kernel/debug/kcikmod"
+static struct dentry *file; // basically "/sys/kernel/debug/kcikmod/calls"
+static struct dentry *subdir; // basically "/sys/kernel/debug/kcikmod"
 
-//static char Message[BUF_LEN]; /* The message the device will give when asked */
+static size_t buf_pos; // for keys_read
+static char keys_buf[BUF_LEN] = {0}; // for keys_read
 
 unsigned long **sys_call_table; // sys call table - array of pointers to funcions
 unsigned long original_cr0; // original register content (read/write privliges)
@@ -38,8 +45,14 @@ asmlinkage long (*ref_read)(int fd, const void* __user buf, size_t count); // po
 asmlinkage long (*ref_write)(int fd, const void* __user buf, size_t count); // pointer to original WRITE
 
 // To do list:
-// 1. How to get the file descriptor from read\write functions?
-// 2. simple read?
+// 1. DONE >> How to get the file descriptor from read\write functions?
+// 2. DONE >> simple read?
+
+// Headers:
+static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset); // header for key_read for debugfs
+asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count); // new read function
+asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count); // new write function
+
 
 // the function finds the sys call - from interceptor
 static unsigned long **aquire_sys_call_table(void){
@@ -89,10 +102,14 @@ static long device_ioctl( //struct inode*  inode,
 /* This structure will hold the functions to be called when a process does something to the device we created */
 
 struct file_operations Fops = {
-	.read = read_with encryption,
-	.write = write_with_encryption,
+	.read = keys_read,
     .unlocked_ioctl= device_ioctl, 
 };
+
+
+static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset){
+	return simple_read_from_buffer(buffer, len, offset, keys_buf, buf_pos);
+}
 
 /* Called when module is loaded. Initialize the module - Register the character device */
 static int __init simple_init(void) {
@@ -103,17 +120,7 @@ static int __init simple_init(void) {
 	global_fd = -1;
 	cipher_flag = 0;
 
-    // Register a char device. Get newly assigned major num 
-    // Fops = our own file operations struct 
-
-    ret_val = register_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME, &Fops );
-
-    if (ret_val < 0) {
-        printk(KERN_ALERT "%s failed with %d\n", "Sorry, registering the kci device ", MAJOR_NUM);
-        return -1; 
-    }
-
-    // create a private log file:
+	// create a private log file:
 	subdir = debugfs_create_dir(KCIKMOD, NULL); //  for creating a directory inside the debug filesystem.
 	if (IS_ERR(subdir))
 		return PTR_ERR(subdir);
@@ -126,6 +133,16 @@ static int __init simple_init(void) {
 		return -ENOENT;
 	}
 
+    // Register a char device. Get newly assigned major num 
+    // Fops = our own file operations struct 
+
+    ret_val = register_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME, &Fops );
+
+    if (ret_val < 0) {
+        printk(KERN_ALERT "%s failed with %d\n", "Sorry, registering the kci device ", MAJOR_NUM);
+        return -1; 
+    }
+ 
 	// change functions is sys calls table:
 	if(!(sys_call_table = aquire_sys_call_table()))
 		return -1;
@@ -135,9 +152,9 @@ static int __init simple_init(void) {
 	write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
 
 	ref_read = (void *)sys_call_table[__NR_read]; // save original read sys call
-	sys_call_table[__NR_read] = (unsigned long *)read_with encryption; // new sys call is our function
+	sys_call_table[__NR_read] = (unsigned long *)read_with_encryption; // new sys call is our function
 	ref_write = (void *)sys_call_table[__NR_write]; // save original write sys call
-	sys_call_table[__NR_write] = (unsigned long *)write_with encryption; // new sys call is our function
+	sys_call_table[__NR_write] = (unsigned long *)write_with_encryption; // new sys call is our function
 
 	write_cr0(original_cr0); // write back the original register content
 
@@ -149,14 +166,19 @@ static int __init simple_init(void) {
 
 
 asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count){
-	int bytes_read_from_fd; // original read return value
+	int bytes_read_from_fd = 0; // original read return value
+	int i = 0;
 
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
+	if (bytes_read_from_fd < 0){
+		 printk(KERN_ALERT "%s failed with\n", "Faild reading with original call ");
+        return -1; 
+	}
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < bytes_read_from_fd; i++){
-			buf[i] += 1;
+			(char *) (buf[i]) += 1;
 		}
 
 		// write to the private log file
@@ -169,59 +191,30 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 
 }
 
-//static ssize_t device_read(struct file *file, /* see include/linux/fs.h   */
-//               char __user * buffer, /* buffer to be filled with data */
- //              size_t length,  /* length of the buffer     */
- //              loff_t * offset){
-
-  /* 
-   	int i;
-   	int fd_to_read_from = 0;
-
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (//compare fd ) ){ // encrypt!
-
-		for (i = 0; i < length && i < BUF_LEN; i++){
-			get_user(Message[i], buffer + i); // read
-			Message[i] += 1; // dectyped
-			put_user(Message[i], buffer + i); // return to user
-		}
-		pr_debug("device_read: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, i); // writes to the private log file?
-
-	}
-
-	else{ // dont encrypt!
-
-		fd_to_read_from = ;
-
-		i = read(// file descriptor //, buffer,length);
-
-
-	}
-	
-	
- 
-	// return the number of input characters used 
-	return i;
-}
-*/
-
 
 /* somebody tries to write into our device file */
 
 
 asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count){
-	int bytes_written_to_fd; // original read return value
+	int bytes_written_to_fd = 0; // original read return value
+	int i = 0;
+
 
 	bytes_written_to_fd = ref_write(fd, buf, count); // original WRITE call!
+	if (bytes_written_to_fd < 0){
+		 printk(KERN_ALERT "%s failed with\n", "Faild writing with original call ");
+        return -1; 
+	}
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < bytes_written_to_fd; i++){
-			buf[i] += 1;
+			*(char*) element =  ((char *)buf)[i] +;
+			(char *) (buf[i]) += 1;
 		}
 
 		// write to the private log file
-		pr_debug("write_with_encryption: FD: %d ,PID: %d, number of bytes aritten: %d\n",global_fd ,global_processID, bytes_written_to_fd); 
+		pr_debug("write_with_encryption: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, bytes_written_to_fd); 
 
 	}
 
@@ -231,38 +224,13 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 }
 
 
-/*static ssize_t device_write(struct file *file,
-         					const char __user * buffer, size_t length, loff_t * offset) {
-
-	int i;
-
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && ()){ // encrypt!
-
-		for (i = 0; i < length && i < BUF_LEN; i++){
-			get_user(Message[i], buffer + i);
-			Message[i] += 1;
-		}
-		pr_debug("device_write: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, i); // writes to the private log file?
-
-	}
-
-	else{ // dont encrypt!
-
-		i = write(,buffer,length);
-
-	}
-	
-	
- 
-	// return the number of input characters used 
-	return i;
-}*/
-
 /* Cleanup - unregister the appropriate file from /proc */
 static void __exit simple_cleanup(void){
     /*  Unregister the device should always succeed (didnt used to in older kernel versions) */
 
     unregister_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME); // return to original system calls
+    // how to check errors here?
+
     debugfs_remove_recursive(subdir); // clears log
 
     // restore original sys calls
@@ -271,8 +239,10 @@ static void __exit simple_cleanup(void){
 	}
 
 	write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
+
 	sys_call_table[__NR_read] = (unsigned long *)ref_read; // restore READ
 	sys_call_table[__NR_write] = (unsigned long *)ref_write; // restore WRITE
+
 	write_cr0(original_cr0); // the register gets its original content
 	
 	msleep(2000);
