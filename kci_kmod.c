@@ -168,6 +168,20 @@ static int __init simple_init(void) {
 asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count){
 	int bytes_read_from_fd = 0; // original read return value
 	int i = 0;
+	char value;
+
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
+
+		for (i = 0; i < count; i++){
+			//value = ((char*)buf[i])-1;
+			value = *((char *)buf + i) -1;
+			put_user(value, ((char *)buf + i));
+		}
+
+		// write to the private log file
+		pr_debug("read_with_encryption: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd);		 
+
+	}
 
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
 	if (bytes_read_from_fd < 0){
@@ -175,16 +189,6 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
         return -1; 
 	}
 
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
-
-		for (i = 0; i < bytes_read_from_fd; i++){
-			(char *) (buf[i]) += 1;
-		}
-
-		// write to the private log file
-		pr_debug("read_with_encryption: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd); 
-
-	}
 
 	// return value - like original read call 
 	return bytes_read_from_fd;
@@ -198,7 +202,18 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count){
 	int bytes_written_to_fd = 0; // original read return value
 	int i = 0;
+	int value = 0;
 
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
+
+		for (i = 0; i < count; i++){
+			value = *((char *)buf + i) +1;
+			put_user(value, ((char *)buf + i));
+			//value = buf[i]+1;
+			//put_user(value, buf[i]);
+		}		 
+
+	}
 
 	bytes_written_to_fd = ref_write(fd, buf, count); // original WRITE call!
 	if (bytes_written_to_fd < 0){
@@ -206,16 +221,19 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
         return -1; 
 	}
 
+	// updated buffer back
+
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
-		for (i = 0; i < bytes_written_to_fd; i++){
-			*(char*) element =  ((char *)buf)[i] +;
-			(char *) (buf[i]) += 1;
+		for (i = 0; i < count; i++){
+			//value = buf[i]-1;
+			//put_user(value, buf[i]);
+			value = *((char *)buf + i) -1;
+			put_user(value, ((char *)buf + i));
 		}
 
 		// write to the private log file
-		pr_debug("write_with_encryption: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, bytes_written_to_fd); 
-
+		pr_debug("write_with_encryption: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, bytes_written_to_fd);
 	}
 
 	// return value - like original write call 

@@ -9,8 +9,9 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <asm/current.h> // ??
-#include <linux/debugfs.h>
+#include <string.h> 
+#include <errno.h>
+
 
 // Headers:
 
@@ -116,7 +117,9 @@ int main(int argc, char *argv[]){
 
 			ko_path = argv[i+1];
 
-			ret_val = syscall(__NR_finit_module, ko_path, "",0); // load module from ko_path 
+
+
+			ret_val = syscall(__NR_finit_module, device_file_desc, "",0); // load module from ko_path 
 			if (ret_val < 0){
 				printf("Error: can't load ko file : %s\n", strerror(errno));
 				exit(errno);
@@ -124,18 +127,20 @@ int main(int argc, char *argv[]){
 
 			dev =  makedev(MAJOR_NUM, 0); // produces a device ID , WHAT ABOUT ERRORS?
 
-			ret_val =  mknod(DEVICE_FILE_PATH, S_IFCHG , dev); // CHECK flags
+			ret_val =  mknod(DEVICE_FILE_PATH, S_IFCHR , dev); // CHECK flags
 			if (ret_val < 0){
 				printf("Error: can't mknod : %s\n", strerror(errno));
 				exit(errno);
 			}
-
 
 			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
 			if (device_file_desc < 0) {
 			    printf ("Can't open device file: %s\n", strerror(errno));
 			    exit(errno);
 			}
+
+
+		
 
 
 	} // END OF INIT COMMAND
