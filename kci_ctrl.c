@@ -101,6 +101,7 @@ int main(int argc, char *argv[]){
 	int FD; // argument for set_fd
 	char * ptr; // for strtoul function
 	int i=1; // our command is at argv[1]
+	int ko_fd = 0;
 
 	if (argc < 2){  // we need at least one <command>
 		printf("Not enough arguments were entered...\n");
@@ -117,9 +118,13 @@ int main(int argc, char *argv[]){
 
 			ko_path = argv[i+1];
 
+			ko_fd = open(ko_path, O_RDONLY); // create a file descriptor for .ko file
+			if (ko_fd < 0) {
+			    printf ("Can't open ko file: %s\n", strerror(errno));
+			    exit(errno);
+			}
 
-
-			ret_val = syscall(__NR_finit_module, device_file_desc, "",0); // load module from ko_path 
+			ret_val = syscall(__NR_finit_module, ko_fd, "",0); // load module from ko_path 
 			if (ret_val < 0){
 				printf("Error: can't load ko file : %s\n", strerror(errno));
 				exit(errno);
@@ -160,6 +165,12 @@ int main(int argc, char *argv[]){
 					exit(errno);
 			}
 
+			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
+			if (device_file_desc < 0) {
+			    printf ("Can't open device file: %s\n", strerror(errno));
+			    exit(errno);
+			}
+
 			ret_val = ioctl(device_file_desc, IOCTL_SET_PID, PID);
 			if (ret_val < 0){
 				printf("Error in ioctl - IOCTL_SET_PID : %s\n", strerror(errno));
@@ -183,6 +194,12 @@ int main(int argc, char *argv[]){
 					exit(errno);
 			}
 
+			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
+			if (device_file_desc < 0) {
+			    printf ("Can't open device file: %s\n", strerror(errno));
+			    exit(errno);
+			}
+
 			ret_val = ioctl(device_file_desc, IOCTL_SET_FD, FD);
 			if (ret_val < 0){
 				printf("Error in IOCTL_SET_PID : %s\n", strerror(errno));
@@ -193,6 +210,12 @@ int main(int argc, char *argv[]){
 
 		else if(strcmp(argv[i], START_STR) == 0){ // CIPHER ENCRYPT COMMAND
 
+			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
+			if (device_file_desc < 0) {
+			    printf ("Can't open device file: %s\n", strerror(errno));
+			    exit(errno);
+			}
+
 			ret_val = ioctl(device_file_desc, IOCTL_CIPHER, 1);
 			if (ret_val < 0){
 				printf("Error stating encryption : %s\n", strerror(errno));
@@ -202,6 +225,12 @@ int main(int argc, char *argv[]){
 		} // END OF CIPHER ENCRYPT COMMAND
 
 		else if(strcmp(argv[i], STOP_STR) == 0){ // CIPHER UN-ENCRYPT COMMAND
+
+			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
+			if (device_file_desc < 0) {
+			    printf ("Can't open device file: %s\n", strerror(errno));
+			    exit(errno);
+			}
 
 			ret_val = ioctl(device_file_desc, IOCTL_CIPHER, 0);
 			if (ret_val < 0){
