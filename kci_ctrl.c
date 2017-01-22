@@ -23,6 +23,7 @@ void copyLog();
 // 4. Do we create the local calls file or assume it exists?
 
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
+const char *KCI_NAME = "kci_kmod";
 
 
 void copyLog(){
@@ -246,7 +247,7 @@ int main(int argc, char *argv[]){
 			copyLog(); 
 
 			// remove kernel module - delete_module
-			ret_val = syscall(__NR_delete_module, ko_path,  O_NONBLOCK); // check flags
+			ret_val = syscall(__NR_delete_module, KCI_NAME,  O_NONBLOCK); // check flags
 			if (ret_val < 0){
 				printf("Error inc delet_module syscall : %s\n", strerror(errno));
 				exit(errno);
