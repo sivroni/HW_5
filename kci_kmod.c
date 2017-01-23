@@ -1,4 +1,3 @@
-
 /* Declare what kind of code we want from the header files
    Defining __KERNEL__ and MODULE allows us to access kernel-level 
    code not usually available to userspace programs. */
@@ -45,8 +44,7 @@ asmlinkage long (*ref_read)(int fd, const void* __user buf, size_t count); // po
 asmlinkage long (*ref_write)(int fd, const void* __user buf, size_t count); // pointer to original WRITE
 
 // To do list:
-// 1. DONE >> How to get the file descriptor from read\write functions?
-// 2. DONE >> simple read?
+// 1. Comment 6 - what is missing?
 
 // Headers:
 static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset); // header for key_read for debugfs
@@ -99,13 +97,16 @@ static long device_ioctl( //struct inode*  inode,
 
 /************** Module Declarations *****************/
 
-/* This structure will hold the functions to be called when a process does something to the device we created */
 
-struct file_operations Fops = {
-	.read = keys_read,
-    .unlocked_ioctl= device_ioctl, 
+/* Holds the debugfs operations */
+struct file_operations Fops_debug = {
+	.read = keys_read, 
 };
 
+/* This structure will hold the functions to be called when a process does something to the device we created */
+struct file_operations Fops_chrdev = {
+    .unlocked_ioctl= device_ioctl, 
+};
 
 static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset){
 	return simple_read_from_buffer(buffer, len, offset, keys_buf, buf_pos);
@@ -127,7 +128,7 @@ static int __init simple_init(void) {
 	if (!subdir)
 		return -ENOENT;
 
-	file = debugfs_create_file(CALLS, S_IRUSR, subdir, NULL, &Fops); //  for creating a file in the debug filesystem.
+	file = debugfs_create_file(CALLS, S_IRUSR, subdir, NULL, &Fops_debug); //  for creating a file in the debug filesystem.
 	if (!file) {
 		debugfs_remove_recursive(subdir);
 		return -ENOENT;
@@ -136,7 +137,7 @@ static int __init simple_init(void) {
     // Register a char device. Get newly assigned major num 
     // Fops = our own file operations struct 
 
-    ret_val = register_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME, &Fops );
+    ret_val = register_chrdev(MAJOR_NUM, DEVICE_RANGE_NAME, &Fops_chrdev );
 
     if (ret_val < 0) {
         printk(KERN_ALERT "%s failed with %d\n", "Sorry, registering the kci device ", MAJOR_NUM);
@@ -170,25 +171,25 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	int i = 0;
 	char value;
 
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
-
-		for (i = 0; i < count; i++){
-			//value = ((char*)buf[i])-1;
-			value = *((char *)buf + i) -1;
-			put_user(value, ((char *)buf + i));
-		}
-
-		// write to the private log file
-		pr_debug("read_with_encryption: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd);		 
-
-	}
-
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
 	if (bytes_read_from_fd < 0){
 		 printk(KERN_ALERT "%s failed with\n", "Faild reading with original call ");
         return -1; 
 	}
 
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
+
+		for (i = 0; i < bytes_read_from_fd; i++){
+			//value = *((char *)buf + i) -1;
+			get_user(value,((char *)buf + i) ); // get value from buffer
+			value = value -1; // decrypt value
+			put_user(value, ((char *)buf + i)); // update buffer
+		}
+
+		// write to the private log file
+		pr_debug("read_with_encryption: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd);		 
+
+	}
 
 	// return value - like original read call 
 	return bytes_read_from_fd;
@@ -200,17 +201,17 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 
 
 asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count){
-	int bytes_written_to_fd = 0; // original read return value
+	int bytes_written_to_fd = 0; // original write return value
 	int i = 0;
 	int value = 0;
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < count; i++){
-			value = *((char *)buf + i) +1;
-			put_user(value, ((char *)buf + i));
-			//value = buf[i]+1;
-			//put_user(value, buf[i]);
+			//value = *((char *)buf + i) +1;
+			get_value(value, ((char *)buf + i)); // get value from buffer
+			value = value + 1; // encrypt value
+			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
 		}		 
 
 	}
@@ -226,9 +227,9 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < count; i++){
-			//value = buf[i]-1;
-			//put_user(value, buf[i]);
-			value = *((char *)buf + i) -1;
+			//value = *((char *)buf + i) -1;
+			get_value(value, ((char *)buf + i)); // get value from buffer
+			value = value - 1; // encrypt value
 			put_user(value, ((char *)buf + i));
 		}
 

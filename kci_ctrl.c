@@ -1,4 +1,3 @@
-
 #include "kci.h"    
 
 #include <fcntl.h>      /* open */ 
@@ -18,9 +17,7 @@
 void copyLog();
 
 // To do list:
-// 2. DONE >> is the arguments for each command come from the command-line or from us?
-// 3. SNAPSHOT - Do I need to worry when ruuning the program (by ruining the VM)?
-// 4. Do we create the local calls file or assume it exists?
+// 1. flow in -init , and what about close()?
 
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
 const char *KCI_NAME = "kci_kmod";
@@ -178,6 +175,8 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
+			close(device_file_desc);
+
 		} // END OF PID COMMAND
 
 		else if(strcmp(argv[i], FD_STR) == 0){ // FD COMMAND
@@ -207,6 +206,8 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
+			close(device_file_desc);
+
 		} // END OF FD COMMAND
 
 		else if(strcmp(argv[i], START_STR) == 0){ // CIPHER ENCRYPT COMMAND
@@ -223,6 +224,8 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
+			close(device_file_desc);
+
 		} // END OF CIPHER ENCRYPT COMMAND
 
 		else if(strcmp(argv[i], STOP_STR) == 0){ // CIPHER UN-ENCRYPT COMMAND
@@ -238,6 +241,7 @@ int main(int argc, char *argv[]){
 				printf("Error stopping encryption : %s\n", strerror(errno));
 				exit(errno);
 			}
+			close(device_file_desc);
 
 
 		} // END OF CIPHER UN-ENCRYPT COMMAND
@@ -247,7 +251,7 @@ int main(int argc, char *argv[]){
 			copyLog(); 
 
 			// remove kernel module - delete_module
-			ret_val = syscall(__NR_delete_module, KCI_NAME,  O_NONBLOCK); // check flags
+			ret_val = syscall(__NR_delete_module, DEVICE_RANGE_NAME,  O_NONBLOCK); // check flags
 			if (ret_val < 0){
 				printf("Error inc delet_module syscall : %s\n", strerror(errno));
 				exit(errno);
