@@ -136,14 +136,7 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
-			device_file_desc = open(DEVICE_FILE_PATH, 0); // create a file descriptor for /dev/kci_dev
-			if (device_file_desc < 0) {
-			    printf ("Can't open device file: %s\n", strerror(errno));
-			    exit(errno);
-			}
-
-
-		
+			close(ko_fd);
 
 
 	} // END OF INIT COMMAND
@@ -248,16 +241,23 @@ int main(int argc, char *argv[]){
 
 		else if(strcmp(argv[i], RM_STR) == 0){
 			// copy log file to inner 'calls' file
-			copyLog(); 
+			copyLog();
+
+			if( unlink(DEVICE_FILE_PATH) < 0){ // remove the mknod
+				printf("Error in unlink : %s\n", strerror(errno));
+				exit(errno);
+			} 
+
+			// need to remove dev too? udev()?
 
 			// remove kernel module - delete_module
 			ret_val = syscall(__NR_delete_module, DEVICE_RANGE_NAME,  O_NONBLOCK); // check flags
 			if (ret_val < 0){
-				printf("Error inc delet_module syscall : %s\n", strerror(errno));
+				printf("Error in delet_module syscall : %s\n", strerror(errno));
 				exit(errno);
 			}
-			// remove device file created by init
-			close(device_file_desc);
+
+			
 
 		}
 
