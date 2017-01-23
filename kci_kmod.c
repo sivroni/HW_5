@@ -209,7 +209,7 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 		for (i = 0; i < count; i++){
 			//value = *((char *)buf + i) +1;
-			get_value(value, ((char *)buf + i)); // get value from buffer
+			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value + 1; // encrypt value
 			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
 		}		 
@@ -228,7 +228,7 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 		for (i = 0; i < count; i++){
 			//value = *((char *)buf + i) -1;
-			get_value(value, ((char *)buf + i)); // get value from buffer
+			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value - 1; // encrypt value
 			put_user(value, ((char *)buf + i));
 		}
