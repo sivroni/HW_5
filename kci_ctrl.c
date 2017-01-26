@@ -250,7 +250,7 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
-			if( unlink(DEVICE_FILE_PATH) < 0){ // remove the mknod
+			if( unlink(KCI_NAME) < 0){ // remove the mknod
 				printf("Error in unlink : %s\n", strerror(errno));
 				exit(errno);
 			} 
