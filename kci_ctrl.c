@@ -243,13 +243,6 @@ int main(int argc, char *argv[]){
 			// copy log file to inner 'calls' file
 			copyLog();
 
-			if( unlink(DEVICE_FILE_PATH) < 0){ // remove the mknod
-				printf("Error in unlink : %s\n", strerror(errno));
-				exit(errno);
-			} 
-
-			// need to remove dev too? udev()?
-
 			// remove kernel module - delete_module
 			ret_val = syscall(__NR_delete_module, DEVICE_RANGE_NAME,  O_NONBLOCK); // check flags
 			if (ret_val < 0){
@@ -257,6 +250,10 @@ int main(int argc, char *argv[]){
 				exit(errno);
 			}
 
+			if( unlink(DEVICE_FILE_PATH) < 0){ // remove the mknod
+				printf("Error in unlink : %s\n", strerror(errno));
+				exit(errno);
+			} 
 			
 
 		}
