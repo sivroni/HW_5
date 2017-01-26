@@ -100,7 +100,7 @@ static long device_ioctl( //struct inode*  inode,
 
 /* Holds the debugfs operations */
 struct file_operations Fops_debug = {
-	// add .owner...
+	.owner = THIS_MODULE,
 	.read = keys_read, 
 };
 
