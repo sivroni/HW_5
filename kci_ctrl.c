@@ -95,8 +95,8 @@ int main(int argc, char *argv[]){
 	int ret_val; // return value for several functions
 	char * ko_path; // .ko path to our compiled file
 	dev_t dev; // makedev return value, A device ID is represented using the type dev_t.
-	unsigned long PID; // process id for set_pid
-	int FD; // argument for set_fd
+	long PID; // process id for set_pid
+	long FD; // argument for set_fd
 	char * ptr; // for strtoul function
 	int i=1; // our command is at argv[1]
 	int ko_fd = 0;
@@ -125,6 +125,7 @@ int main(int argc, char *argv[]){
 			ret_val = syscall(__NR_finit_module, ko_fd, "",0); // load module from ko_path 
 			if (ret_val < 0){
 				printf("Error: can't load ko file : %s\n", strerror(errno));
+				close(ko_fd);
 				exit(errno);
 			}
 
@@ -133,6 +134,8 @@ int main(int argc, char *argv[]){
 			ret_val =  mknod(DEVICE_FILE_PATH, S_IFCHR , dev); // CHECK flags
 			if (ret_val < 0){
 				printf("Error: can't mknod : %s\n", strerror(errno));
+				close(ko_fd);
+				unlink(KCI_NAME);
 				exit(errno);
 			}
 
@@ -150,7 +153,7 @@ int main(int argc, char *argv[]){
 
 			// convert pid to int
 			errno = 0;
-			PID = strtoul(argv[i+1], &ptr, 10); 
+			PID = strtol(argv[i+1], &ptr, 10); 
 			if (errno != 0){
 					printf("Error converting PID from string to unsigned long: %s\n", strerror(errno));
 					exit(errno);
