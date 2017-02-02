@@ -8,7 +8,7 @@
  * registration any more, because ioctls need to know 
  * it. */
 #define MAJOR_NUM 245 // checked major was avaliable with command: head /proc/devices
-#define MAX 1024 // for buffer
+#define MAX 1000 // for buffer
 
 /* Generates ioctl commands numbers, used to write data to the driver */
 #define IOCTL_SET_PID _IOW(MAJOR_NUM, 0, unsigned long)

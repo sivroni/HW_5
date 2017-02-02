@@ -208,7 +208,7 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 
 		strncpy(keys_buf + buf_pos, str, len);
 		buf_pos += len;
-		keys_buf[buf_pos++] = '\n';
+		//keys_buf[buf_pos++] = '\n';
 
 		pr_debug("%s\n", str);	
 			 
@@ -228,6 +228,8 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	int bytes_written_to_fd = 0; // original write return value
 	int i = 0;
 	int value = 0;
+	size_t len; // for prdebug
+	char str[MAX]; // for debugfs
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
@@ -258,7 +260,7 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 		}
 
 		// write to the private log file
-		if (sprintf(str, "read_with_encryption: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
+		if (sprintf(str, "write_with_encryption: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
 			return -1;	
 		}
 
@@ -271,7 +273,7 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 		strncpy(keys_buf + buf_pos, str, len);
 		buf_pos += len;
-		keys_buf[buf_pos++] = '\n';
+	//	keys_buf[buf_pos++] = '\n';
 
 		pr_debug("%s\n", str);	
 			 
