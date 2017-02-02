@@ -16,9 +16,6 @@
 
 void copyLog();
 
-// To do list:
-// 1. flow in -init , and what about close()?
-
 const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
 const char *KCI_NAME = "kci_kmod";
 

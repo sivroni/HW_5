@@ -14,11 +14,11 @@
 #include <linux/fs.h>       /* for register_chrdev */
 #include <asm/uaccess.h>    /* for get_user and put_user */
 #include <linux/string.h>   /* for memset. NOTE - not string.h!*/
-#include <asm/current.h> 	/* for current global variable */
+//#include <asm/current.h> 	/* for current global variable */
 #include <linux/syscalls.h>
 #include <linux/delay.h>
 #include <asm/paravirt.h>
-#include <linux/init.h>
+//#include <linux/init.h>
 #include <linux/debugfs.h>
 
 
@@ -42,8 +42,6 @@ unsigned long original_cr0; // original register content (read/write privliges)
 asmlinkage long (*ref_read)(int fd, const void* __user buf, size_t count); // pointer to original READ
 asmlinkage long (*ref_write)(int fd, const void* __user buf, size_t count); // pointer to original WRITE
 
-// To do list:
-// 1. Comment 6 - what is missing?
 
 // Headers:
 static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset); // header for key_read for debugfs
@@ -177,7 +175,8 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	int i = 0;
 	char value;
 	size_t len; // for prdebug
-	char str[MAX]; // for debugfs
+	char str_succesed[MAX]; // for debugfs
+	char str_needed[MAX]; // for debugfs
 
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
 	if (bytes_read_from_fd < 0){
@@ -195,22 +194,40 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 		}
 
 		// write to the private log file
-		if (sprintf(str, "read_with_encryption: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
+		if (sprintf(str_succesed, "read_with_encryption success: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
 			return -1;	
 		}
 
-		len = strlen(str);
+		len = strlen(str_succesed);
 
 		if ((buf_pos + len) >= BUF_LEN) {
 			memset(keys_buf, 0, BUF_LEN);
 			buf_pos = 0;
 		}
 
-		strncpy(keys_buf + buf_pos, str, len);
+		strncpy(keys_buf + buf_pos, str_succesed, len);
 		buf_pos += len;
 		//keys_buf[buf_pos++] = '\n';
 
-		pr_debug("%s\n", str);	
+		pr_debug("%s\n", str_succesed);	
+
+		// supposed to read:
+		if (sprintf(str_needed, "read_with_encryption supposed: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, count) < 0){
+			return -1;	
+		}
+
+		len = strlen(str_needed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_needed, len);
+		buf_pos += len;
+		//keys_buf[buf_pos++] = '\n';
+
+		pr_debug("%s\n", str_needed);	
 			 
 		// change to sniffer_cb where pressed_key need to be the msg (save the "if" in the function)
 	}
@@ -229,7 +246,9 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	int i = 0;
 	int value = 0;
 	size_t len; // for prdebug
-	char str[MAX]; // for debugfs
+	char str_succesed[MAX]; // for debugfs
+	char str_needed[MAX]; // for debugfs
+ 
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
@@ -259,23 +278,42 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 			put_user(value, ((char *)buf + i));
 		}
 
-		// write to the private log file
-		if (sprintf(str, "write_with_encryption: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
+		// write to the private log file - succeded to write
+		if (sprintf(str_succesed, "write_with_encryption success: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
 			return -1;	
 		}
 
-		len = strlen(str);
+		len = strlen(str_succesed);
 
 		if ((buf_pos + len) >= BUF_LEN) {
 			memset(keys_buf, 0, BUF_LEN);
 			buf_pos = 0;
 		}
 
-		strncpy(keys_buf + buf_pos, str, len);
+		strncpy(keys_buf + buf_pos, str_succesed, len);
 		buf_pos += len;
 	//	keys_buf[buf_pos++] = '\n';
 
-		pr_debug("%s\n", str);	
+		pr_debug("%s\n", str_succesed);	
+
+
+		// suppused to write:
+		if (sprintf(str_needed, "write_with_encryption suppose: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, count) < 0){
+		return -1;	
+		}
+
+		len = strlen(str_needed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_needed, len);
+		buf_pos += len;
+	//	keys_buf[buf_pos++] = '\n';
+
+		pr_debug("%s\n", str_needed);
 			 
 	}
 
