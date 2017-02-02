@@ -1,14 +1,9 @@
-CFLAGS_kisni.o := -DDEBUG
-
-obj-m += kisni.o
-
-kisni-objs := keysniffer.o
-
-KERNELVERSION = $(shell uname -r)
-KDIR := /lib/modules/$(KERNELVERSION)/build
+obj-m := kci_kmod.o
+KDIR := /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
 
 all:
-	make -C $(KDIR) M=$(PWD) modules
-
+	$(MAKE) -C $(KDIR) M=$(PWD) modules
+ 
 clean:
-	make -C $(KDIR) M=$(PWD) clean
+	$(MAKE) -C $(KDIR) M=$(PWD) clean
