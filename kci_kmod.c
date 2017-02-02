@@ -28,9 +28,9 @@
 MODULE_LICENSE("GPL"); // GNU Public License v2 or later
 
 // Global variables:
-static int global_processID;
-static int global_fd;
-static int cipher_flag;
+static int global_processID = -1;
+static int global_fd = -1;
+static int cipher_flag = 0;
 
 static struct dentry *file; // basically "/sys/kernel/debug/kcikmod/calls"
 static struct dentry *subdir; // basically "/sys/kernel/debug/kcikmod"
@@ -181,7 +181,6 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
 
 		for (i = 0; i < bytes_read_from_fd; i++){
-			//value = *((char *)buf + i) -1;
 			get_user(value,((char *)buf + i) ); // get value from buffer
 			value = value -1; // decrypt value
 			put_user(value, ((char *)buf + i)); // update buffer
@@ -209,7 +208,6 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < count; i++){
-			//value = *((char *)buf + i) +1;
 			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value + 1; // encrypt value
 			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
