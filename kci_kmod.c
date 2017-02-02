@@ -19,7 +19,6 @@
 #include <linux/delay.h>
 #include <asm/paravirt.h>
 #include <linux/init.h>
-#include <linux/keyboard.h>
 #include <linux/debugfs.h>
 
 
@@ -50,6 +49,7 @@ asmlinkage long (*ref_write)(int fd, const void* __user buf, size_t count); // p
 static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset); // header for key_read for debugfs
 asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count); // new read function
 asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count); // new write function
+
 
 
 // the function finds the sys call - from interceptor
@@ -95,17 +95,20 @@ static long device_ioctl( //struct inode*  inode,
 }
 
 
+
+
+
 /************** Module Declarations *****************/
 
 
 /* Holds the debugfs operations */
-struct file_operations Fops_debug = {
+const struct file_operations Fops_debug = {
 	.owner = THIS_MODULE,
 	.read = keys_read, 
 };
 
 /* This structure will hold the functions to be called when a process does something to the device we created */
-struct file_operations Fops_chrdev = {
+const struct file_operations Fops_chrdev = {
     .unlocked_ioctl= device_ioctl, 
 };
 
@@ -144,11 +147,13 @@ static int __init simple_init(void) {
         printk(KERN_ALERT "%s failed with %d\n", "Sorry, registering the kci device ", MAJOR_NUM);
         return -1; 
     }
+
+    buf_pos = 0; // init buffer for debugfs
  
 	// change functions is sys calls table:
 	if(!(sys_call_table = aquire_sys_call_table()))
 		return -1;
-
+ 
 	original_cr0 = read_cr0(); // read original register of table
 
 	write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
@@ -171,6 +176,8 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	int bytes_read_from_fd = 0; // original read return value
 	int i = 0;
 	char value;
+	size_t len; // for prdebug
+	char str[MAX]; // for debugfs
 
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
 	if (bytes_read_from_fd < 0){
@@ -181,14 +188,31 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
 
 		for (i = 0; i < bytes_read_from_fd; i++){
+			//value = *((char *)buf + i) -1;
 			get_user(value,((char *)buf + i) ); // get value from buffer
 			value = value -1; // decrypt value
 			put_user(value, ((char *)buf + i)); // update buffer
 		}
 
 		// write to the private log file
-		pr_debug("read_with_encryption: FD: %d ,PID: %d, number of bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd);		 
+		if (sprintf(str, "read_with_encryption: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
+			return -1;	
+		}
 
+		len = strlen(str);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str, len);
+		buf_pos += len;
+		//keys_buf[buf_pos++] = '\n';
+
+		pr_debug("%s\n", str);	
+			 
+		// change to sniffer_cb where pressed_key need to be the msg (save the "if" in the function)
 	}
 
 	// return value - like original read call 
@@ -204,10 +228,13 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	int bytes_written_to_fd = 0; // original write return value
 	int i = 0;
 	int value = 0;
+	size_t len; // for prdebug
+	char str[MAX]; // for debugfs
 
 	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
 
 		for (i = 0; i < count; i++){
+			//value = *((char *)buf + i) +1;
 			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value + 1; // encrypt value
 			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
@@ -233,7 +260,23 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 		}
 
 		// write to the private log file
-		pr_debug("write_with_encryption: FD: %d ,PID: %d, number of bytes written: %d\n",global_fd ,global_processID, bytes_written_to_fd);
+		if (sprintf(str, "write_with_encryption: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
+			return -1;	
+		}
+
+		len = strlen(str);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str, len);
+		buf_pos += len;
+	//	keys_buf[buf_pos++] = '\n';
+
+		pr_debug("%s\n", str);	
+			 
 	}
 
 	// return value - like original write call 
