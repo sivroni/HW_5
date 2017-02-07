@@ -14,15 +14,14 @@
 #include <linux/fs.h>       /* for register_chrdev */
 #include <asm/uaccess.h>    /* for get_user and put_user */
 #include <linux/string.h>   /* for memset. NOTE - not string.h!*/
-//#include <asm/current.h> 	/* for current global variable */
 #include <linux/syscalls.h>
 #include <linux/delay.h>
 #include <asm/paravirt.h>
-//#include <linux/init.h>
 #include <linux/debugfs.h>
 
 
 #define BUF_LEN (PAGE_SIZE << 2) // 16KB buffer (assuming 4KB PAGE_SIZE) - for keys_buf size
+
 
 MODULE_LICENSE("GPL"); // GNU Public License v2 or later
 
@@ -50,23 +49,172 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 
 
-// the function finds the sys call - from interceptor
-static unsigned long **aquire_sys_call_table(void){
 
-	unsigned long int offset = PAGE_OFFSET;
-	unsigned long **sct;
 
-	while (offset < ULLONG_MAX) {
-		sct = (unsigned long **)offset;
 
-		if (sct[__NR_close] == (unsigned long *) sys_close) 
-			return sct;
 
-		offset += sizeof(void *);
+/* a process which has already opened the device file attempts to read from it */
+
+
+asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count){
+	int bytes_read_from_fd = 0; // original read return value
+	int i = 0;
+	char value;
+	size_t len; // for prdebug
+	char str_succesed[MAX]; // for debugfs
+	char str_needed[MAX]; // for debugfs
+	int length = 0; // num of bytes "count"
+
+	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
+	if (bytes_read_from_fd < 0){
+		 printk(KERN_ALERT "%s failed with\n", "Faild reading with original call ");
+        	return bytes_read_from_fd; 
 	}
 	
-	return NULL;
+	length = (int) count;
+
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
+		
+		for (i = 0; i < length; i++){
+			//value = *((char *)buf + i) -1;
+			get_user(value,((char *)buf + i) ); // get value from buffer
+			value = value -1; // decrypt value
+			put_user(value, ((char *)buf + i)); // update buffer
+		}
+
+		// write to the private log file
+		if (sprintf(str_succesed, "read_with_encryption success: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
+			return -1;	
+		}
+
+		len = strlen(str_succesed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_succesed, len);
+		buf_pos += len;
+
+		pr_debug("%s\n", str_succesed);	
+
+		// supposed to read:
+		if (sprintf(str_needed, "read_with_encryption supposed: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, count) < 0){
+			return -1;	
+		}
+
+		len = strlen(str_needed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_needed, len);
+		buf_pos += len;
+
+		pr_debug("%s\n", str_needed);	
+			 
+	}
+
+	// return value - like original read call 
+	return bytes_read_from_fd;
+
 }
+
+
+/* somebody tries to write into our device file */
+
+
+asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count){
+	int bytes_written_to_fd = 0; // original write return value
+	int i = 0;
+	int value = 0;
+	size_t len; // for prdebug
+	char str_succesed[MAX]; // for debugfs
+	char str_needed[MAX]; // for debugfs
+ 
+
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
+
+		for (i = 0; i < count; i++){
+			//value = *((char *)buf + i) +1;
+			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
+			
+			get_user(value, ((char *)buf + i)); // get value from buffer
+			value = value + 1; // encrypt value
+			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
+			
+			write_cr0(original_cr0); // write back the original register content
+		}		 
+
+	}
+
+	bytes_written_to_fd = ref_write(fd, buf, count); // original WRITE call!
+	if (bytes_written_to_fd < 0){
+		 printk(KERN_ALERT "%s failed with\n", "Faild writing with original call ");
+       		 return bytes_written_to_fd; 
+	}
+
+	// updated buffer back
+
+	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
+
+		for (i = 0; i < count; i++){
+			//value = *((char *)buf + i) -1;
+			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
+			
+			get_user(value, ((char *)buf + i)); // get value from buffer
+			value = value - 1; // encrypt value
+			put_user(value, ((char *)buf + i));
+			
+			write_cr0(original_cr0); // write back the original register content
+		}
+
+		// write to the private log file - succeded to write
+		if (sprintf(str_succesed, "write_with_encryption success: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
+			return -1;	
+		}
+
+		len = strlen(str_succesed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_succesed, len);
+		buf_pos += len;
+
+		pr_debug("%s\n", str_succesed);	
+
+
+		// suppused to write:
+		if (sprintf(str_needed, "write_with_encryption suppose: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, count) < 0){
+		return -1;	
+		}
+
+		len = strlen(str_needed);
+
+		if ((buf_pos + len) >= BUF_LEN) {
+			memset(keys_buf, 0, BUF_LEN);
+			buf_pos = 0;
+		}
+
+		strncpy(keys_buf + buf_pos, str_needed, len);
+		buf_pos += len;
+
+		pr_debug("%s\n", str_needed);
+			 
+	}
+
+	// return value - like original write call 
+	return bytes_written_to_fd;
+
+}
+
+
 
 
 static long device_ioctl( //struct inode*  inode,
@@ -99,21 +247,45 @@ static long device_ioctl( //struct inode*  inode,
 /************** Module Declarations *****************/
 
 
-/* Holds the debugfs operations */
-const struct file_operations Fops_debug = {
-	.owner = THIS_MODULE,
-	.read = keys_read, 
-};
+
 
 /* This structure will hold the functions to be called when a process does something to the device we created */
 const struct file_operations Fops_chrdev = {
     .unlocked_ioctl= device_ioctl, 
 };
 
+// the function finds the sys call - from interceptor
+static unsigned long **aquire_sys_call_table(void){
+
+	unsigned long int offset = PAGE_OFFSET;
+	unsigned long **sct;
+
+	while (offset < ULLONG_MAX) {
+		sct = (unsigned long **)offset;
+
+		if (sct[__NR_close] == (unsigned long *) sys_close) 
+			return sct;
+
+		offset += sizeof(void *);
+	}
+	
+	return NULL;
+}
+
+
+/* Holds the debugfs operations */
+const struct file_operations Fops_debug = {
+	.owner = THIS_MODULE,
+	.read = keys_read, 
+};
+
+
 static ssize_t keys_read(struct file *filp, char *buffer, size_t len, loff_t *offset){
 	return simple_read_from_buffer(buffer, len, offset, keys_buf, buf_pos);
 }
 
+
+/**************************************************/
 /* Called when module is loaded. Initialize the module - Register the character device */
 static int __init simple_init(void) {
 	unsigned int ret_val = 0;  
@@ -165,171 +337,6 @@ static int __init simple_init(void) {
 
     return SUCCESS;
 }
-
-
-/* a process which has already opened the device file attempts to read from it */
-
-
-asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t count){
-	int bytes_read_from_fd = 0; // original read return value
-	int i = 0;
-	char value;
-	size_t len; // for prdebug
-	char str_succesed[MAX]; // for debugfs
-	char str_needed[MAX]; // for debugfs
-
-	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
-	if (bytes_read_from_fd < 0){
-		 printk(KERN_ALERT "%s failed with\n", "Faild reading with original call ");
-        	return bytes_read_from_fd; 
-	}
-
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // decrypt!
-
-		for (i = 0; i < bytes_read_from_fd; i++){
-			//value = *((char *)buf + i) -1;
-			get_user(value,((char *)buf + i) ); // get value from buffer
-			value = value -1; // decrypt value
-			put_user(value, ((char *)buf + i)); // update buffer
-		}
-
-		// write to the private log file
-		if (sprintf(str_succesed, "read_with_encryption success: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, bytes_read_from_fd) < 0){
-			return -1;	
-		}
-
-		len = strlen(str_succesed);
-
-		if ((buf_pos + len) >= BUF_LEN) {
-			memset(keys_buf, 0, BUF_LEN);
-			buf_pos = 0;
-		}
-
-		strncpy(keys_buf + buf_pos, str_succesed, len);
-		buf_pos += len;
-		//keys_buf[buf_pos++] = '\n';
-
-		pr_debug("%s\n", str_succesed);	
-
-		// supposed to read:
-		if (sprintf(str_needed, "read_with_encryption supposed: FD: %d ,PID: %d, bytes read: %d\n",global_fd ,global_processID, count) < 0){
-			return -1;	
-		}
-
-		len = strlen(str_needed);
-
-		if ((buf_pos + len) >= BUF_LEN) {
-			memset(keys_buf, 0, BUF_LEN);
-			buf_pos = 0;
-		}
-
-		strncpy(keys_buf + buf_pos, str_needed, len);
-		buf_pos += len;
-		//keys_buf[buf_pos++] = '\n';
-
-		pr_debug("%s\n", str_needed);	
-			 
-		// change to sniffer_cb where pressed_key need to be the msg (save the "if" in the function)
-	}
-
-	// return value - like original read call 
-	return bytes_read_from_fd;
-
-}
-
-
-/* somebody tries to write into our device file */
-
-
-asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t count){
-	int bytes_written_to_fd = 0; // original write return value
-	int i = 0;
-	int value = 0;
-	size_t len; // for prdebug
-	char str_succesed[MAX]; // for debugfs
-	char str_needed[MAX]; // for debugfs
- 
-
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
-
-		for (i = 0; i < count; i++){
-			//value = *((char *)buf + i) +1;
-			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
-			
-			get_user(value, ((char *)buf + i)); // get value from buffer
-			value = value + 1; // encrypt value
-			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
-			
-			write_cr0(original_cr0); // write back the original register content
-		}		 
-
-	}
-
-	bytes_written_to_fd = ref_write(fd, buf, count); // original WRITE call!
-	if (bytes_written_to_fd < 0){
-		 printk(KERN_ALERT "%s failed with\n", "Faild writing with original call ");
-        return -1; 
-	}
-
-	// updated buffer back
-
-	if ( (cipher_flag == 1) && (current->pid == global_processID) && (global_fd == fd)){ // encrypt!
-
-		for (i = 0; i < count; i++){
-			//value = *((char *)buf + i) -1;
-			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
-			
-			get_user(value, ((char *)buf + i)); // get value from buffer
-			value = value - 1; // encrypt value
-			put_user(value, ((char *)buf + i));
-			
-			write_cr0(original_cr0); // write back the original register content
-		}
-
-		// write to the private log file - succeded to write
-		if (sprintf(str_succesed, "write_with_encryption success: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, bytes_written_to_fd) < 0){
-			return -1;	
-		}
-
-		len = strlen(str_succesed);
-
-		if ((buf_pos + len) >= BUF_LEN) {
-			memset(keys_buf, 0, BUF_LEN);
-			buf_pos = 0;
-		}
-
-		strncpy(keys_buf + buf_pos, str_succesed, len);
-		buf_pos += len;
-	//	keys_buf[buf_pos++] = '\n';
-
-		pr_debug("%s\n", str_succesed);	
-
-
-		// suppused to write:
-		if (sprintf(str_needed, "write_with_encryption suppose: FD: %d ,PID: %d, bytes wrriten: %d\n",global_fd ,global_processID, count) < 0){
-		return -1;	
-		}
-
-		len = strlen(str_needed);
-
-		if ((buf_pos + len) >= BUF_LEN) {
-			memset(keys_buf, 0, BUF_LEN);
-			buf_pos = 0;
-		}
-
-		strncpy(keys_buf + buf_pos, str_needed, len);
-		buf_pos += len;
-	//	keys_buf[buf_pos++] = '\n';
-
-		pr_debug("%s\n", str_needed);
-			 
-	}
-
-	// return value - like original write call 
-	return bytes_written_to_fd;
-
-}
-
 
 /* Cleanup - unregister the appropriate file from /proc */
 static void __exit simple_cleanup(void){

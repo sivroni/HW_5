@@ -11,12 +11,23 @@
 #include <string.h> 
 #include <errno.h>
 
+///// define commands: /////
+#define INIT_STR "-init"
+#define PID_STR "-pid"
+#define FD_STR "-fd"
+#define START_STR "-start"
+#define STOP_STR "-stop"
+#define RM_STR "-rm"
+////////////////////////////
+
+#define LOF_FILE_PATH "/sys/kernel/debug/kcikmod/calls"
+
+#define NUM_OF_BYTES 1024 // for buffer
 
 // Headers:
 
 void copyLog();
 
-const char *DEVICE_FILE_PATH = "/dev/kci_dev"; // device file path
 const char *KCI_NAME = "kci_kmod";
 
 
@@ -27,7 +38,7 @@ void copyLog(){
 	int bytes_read_from_log = 0;
 	int total_bytes_written_to_calls = 0;
 	int bytes_written_to_calls = 0;
-	char logBuffer[MAX] = {0}; // insert bytes read from log file here
+	char logBuffer[NUM_OF_BYTES] = {0}; // insert bytes read from log file here
 
 	// create "calls file"
 	inner_calls_fd = open(CALLS, O_WRONLY | O_CREAT | O_TRUNC,0777 ); // opens/creates an output file 
@@ -48,7 +59,7 @@ void copyLog(){
 
 	while (1){ // read until we have nothing to read from log file
 
-			bytes_read_from_log = read(log_file_fd, logBuffer, MAX); // try reading from IN
+			bytes_read_from_log = read(log_file_fd, logBuffer, NUM_OF_BYTES); // try reading from IN
 
 			if (bytes_read_from_log < 0){ // error reading from client
 				printf("Error reading from log file: %s\n", strerror(errno));
@@ -111,20 +122,6 @@ int main(int argc, char *argv[]){
 				exit(-1);
 			}
 
-			ko_path = argv[i+1];
-
-			ko_fd = open(ko_path, O_RDONLY); // create a file descriptor for .ko file
-			if (ko_fd < 0) {
-			    printf ("Can't open ko file: %s\n", strerror(errno));
-			    exit(errno);
-			}
-
-			ret_val = syscall(__NR_finit_module, ko_fd, "",0); // load module from ko_path 
-			if (ret_val < 0){
-				printf("Error: can't load ko file : %s\n", strerror(errno));
-				close(ko_fd);
-				exit(errno);
-			}
 
 			dev =  makedev(MAJOR_NUM, 0); // produces a device ID , WHAT ABOUT ERRORS?
 
@@ -133,6 +130,21 @@ int main(int argc, char *argv[]){
 				printf("Error: can't mknod : %s\n", strerror(errno));
 				close(ko_fd);
 				unlink(KCI_NAME);
+				exit(errno);
+			}
+		
+			ko_path = argv[i+1];
+		
+			ko_fd = open(ko_path, O_RDONLY); // create a file descriptor for .ko file
+			if (ko_fd < 0) {
+			    printf ("Can't open ko file: %s\n", strerror(errno));
+			    exit(errno);
+			}
+		
+			ret_val = syscall(__NR_finit_module, ko_fd, "",0); // load module from ko_path 
+			if (ret_val < 0){
+				printf("Error: can't load ko file : %s\n", strerror(errno));
+				close(ko_fd);
 				exit(errno);
 			}
 
@@ -256,6 +268,10 @@ int main(int argc, char *argv[]){
 			} 
 			
 
+		}
+		else { // wrong command
+			printf("Wrong command entered, closing program...\n");
+			exit(-1);
 		}
 
 
