@@ -67,7 +67,7 @@ asmlinkage long read_with_encryption(int fd, const void* __user buf, size_t coun
 	bytes_read_from_fd = ref_read(fd, buf, count); // original READ call!
 	if (bytes_read_from_fd < 0){
 		 printk(KERN_ALERT "%s failed with\n", "Faild reading with original call ");
-        	return -1; 
+        	return bytes_read_from_fd; 
 	}
 	
 	length = (int) count;
@@ -139,9 +139,13 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 		for (i = 0; i < count; i++){
 			//value = *((char *)buf + i) +1;
+			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
+			
 			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value + 1; // encrypt value
 			put_user(value, ((char *)buf + i)); // update buffer with encrypted data
+			
+			write_cr0(original_cr0); // write back the original register content
 		}		 
 
 	}
@@ -149,7 +153,7 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 	bytes_written_to_fd = ref_write(fd, buf, count); // original WRITE call!
 	if (bytes_written_to_fd < 0){
 		 printk(KERN_ALERT "%s failed with\n", "Faild writing with original call ");
-       		 return -1; 
+       		 return bytes_written_to_fd; 
 	}
 
 	// updated buffer back
@@ -158,9 +162,13 @@ asmlinkage long write_with_encryption(int fd, const void* __user buf, size_t cou
 
 		for (i = 0; i < count; i++){
 			//value = *((char *)buf + i) -1;
+			write_cr0(original_cr0 & ~0x00010000); // flip the bits - now we can write to the table
+			
 			get_user(value, ((char *)buf + i)); // get value from buffer
 			value = value - 1; // encrypt value
 			put_user(value, ((char *)buf + i));
+			
+			write_cr0(original_cr0); // write back the original register content
 		}
 
 		// write to the private log file - succeded to write
